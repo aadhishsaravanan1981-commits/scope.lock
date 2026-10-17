@@ -11,7 +11,14 @@ const starterRequests = [
 	{ id: 2, title: "Update onboarding copy", description: "Clarify the first-time setup instructions.", priority: "Low", status: "Approved", requestedBy: "Sam Rivera" }
 ];
 
+const agreements = [
+	{ id: "master-services", title: "Master Services Agreement", status: "Signed · Sep 12, 2026 · Version 1.0" },
+	{ id: "client-portal-sow", title: "Client Portal Redesign - Statement of Work", status: "Approved · Sep 18, 2026 · Version 1.2" },
+	{ id: "billing-workflow-sow", title: "Billing Workflow - Statement of Work", status: "Pending review · Oct 10, 2026 · Version 1.0" }
+];
+
 const storageKey = "scopelock-change-requests";
+const agreementEstimatesStorageKey = "scopelock-agreement-estimates";
 const loginPage = document.getElementById("loginPage");
 const app = document.getElementById("app");
 const loginForm = document.getElementById("loginForm");
@@ -38,6 +45,24 @@ function loadRequests() {
 }
 
 let requests = loadRequests();
+
+function loadAgreementEstimates() {
+	try {
+		const saved = JSON.parse(localStorage.getItem(agreementEstimatesStorageKey));
+		if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+
+		return Object.fromEntries(Object.entries(saved).filter(([id, cents]) =>
+			agreements.some((agreement) => agreement.id === id) &&
+			Number.isSafeInteger(cents) &&
+			cents >= 0
+		));
+	} catch {
+		showToast("Agreement estimates could not be loaded from this browser.");
+		return {};
+	}
+}
+
+let agreementEstimates = loadAgreementEstimates();
 
 function loadAccounts() {
 	try {
@@ -107,6 +132,23 @@ function saveRequests() {
 	} catch {
 		showToast("Changes could not be saved in this browser.");
 	}
+}
+
+function saveAgreementEstimates() {
+	try {
+		localStorage.setItem(agreementEstimatesStorageKey, JSON.stringify(agreementEstimates));
+		return true;
+	} catch {
+		showToast("Agreement estimates could not be saved in this browser.");
+		return false;
+	}
+}
+
+function formatUsd(cents) {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD"
+	}).format(cents / 100);
 }
 
 function escapeHtml(value) {
@@ -247,9 +289,30 @@ function renderPage(page) {
 		content.innerHTML = `
 			<div class="welcome"><div><h3>Agreements</h3><p>Key project documents and their current status.</p></div></div>
 			<section class="panel"><h3>Project documents</h3><p class="panel-subtitle">Documents are sample records for this demo.</p>
-				<article class="project"><strong>Master Services Agreement</strong><p class="panel-subtitle">Signed · Sep 12, 2026 · Version 1.0</p></article>
-				<article class="project"><strong>Client Portal Redesign - Statement of Work</strong><p class="panel-subtitle">Approved · Sep 18, 2026 · Version 1.2</p></article>
-				<article class="project"><strong>Billing Workflow - Statement of Work</strong><p class="panel-subtitle">Pending review · Oct 10, 2026 · Version 1.0</p></article>
+				${agreements.map((agreement) => `
+					<article class="project">
+						<strong>${escapeHtml(agreement.title)}</strong>
+						<p class="panel-subtitle">${escapeHtml(agreement.status)}</p>
+						<p class="agreement-estimate" data-estimate-for="${agreement.id}">${agreementEstimates[agreement.id] === undefined
+							? "Estimated value: Not set"
+							: `Estimated value: ${formatUsd(agreementEstimates[agreement.id])}`}</p>
+					</article>`).join("")}
+			</section>
+			<section class="panel agreement-estimate-panel">
+				<h3>Estimate agreement value</h3>
+				<p class="panel-subtitle">Add or update an estimated value in US dollars. Estimates are saved in this browser.</p>
+				<form id="agreementEstimateForm">
+					<label for="estimateAgreement">Agreement</label>
+					<select id="estimateAgreement" name="agreementId" required>
+						${agreements.map((agreement) => `<option value="${agreement.id}">${escapeHtml(agreement.title)}</option>`).join("")}
+					</select>
+					<label for="agreementEstimate">Estimated value (USD)</label>
+					<div class="currency-input">
+						<span aria-hidden="true">$</span>
+						<input id="agreementEstimate" name="amount" type="number" min="0" step="0.01" required placeholder="0.00" inputmode="decimal" value="${agreementEstimates[agreements[0].id] === undefined ? "" : (agreementEstimates[agreements[0].id] / 100).toFixed(2)}">
+					</div>
+					<button class="primary" type="submit">Save estimate</button>
+				</form>
 			</section>`;
 	} else {
 		content.innerHTML = `
@@ -345,6 +408,39 @@ document.getElementById("logout").addEventListener("click", () => {
 });
 
 content.addEventListener("submit", (event) => {
+	if (event.target.id === "agreementEstimateForm") {
+		event.preventDefault();
+		if (!event.target.reportValidity()) return;
+
+		const formData = new FormData(event.target);
+		const agreementId = String(formData.get("agreementId"));
+		const amount = Number(formData.get("amount"));
+		const cents = Math.round(amount * 100);
+		if (!agreements.some((agreement) => agreement.id === agreementId) ||
+			!Number.isFinite(amount) ||
+			amount < 0 ||
+			!Number.isSafeInteger(cents)) {
+			showToast("Enter a valid agreement estimate in US dollars.");
+			return;
+		}
+
+		const previousEstimate = agreementEstimates[agreementId];
+		agreementEstimates[agreementId] = cents;
+		if (!saveAgreementEstimates()) {
+			if (previousEstimate === undefined) {
+				delete agreementEstimates[agreementId];
+			} else {
+				agreementEstimates[agreementId] = previousEstimate;
+			}
+			return;
+		}
+
+		const estimateDisplay = content.querySelector(`[data-estimate-for="${agreementId}"]`);
+		estimateDisplay.textContent = `Estimated value: ${formatUsd(cents)}`;
+		showToast("Agreement estimate saved.");
+		return;
+	}
+
 	if (event.target.id !== "requestForm") return;
 	event.preventDefault();
 	if (!event.target.reportValidity()) return;
@@ -361,6 +457,14 @@ content.addEventListener("submit", (event) => {
 	saveRequests();
 	renderPage("changes");
 	showToast("Change request submitted.");
+});
+
+content.addEventListener("change", (event) => {
+	if (event.target.id !== "estimateAgreement") return;
+
+	const amountInput = content.querySelector("#agreementEstimate");
+	const savedCents = agreementEstimates[event.target.value];
+	amountInput.value = savedCents === undefined ? "" : (savedCents / 100).toFixed(2);
 });
 
 content.addEventListener("click", (event) => {

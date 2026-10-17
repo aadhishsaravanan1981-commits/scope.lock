@@ -439,6 +439,57 @@ footer {
   border-bottom: 1px solid #edf0f6;
 }
 
+.agreement-estimate {
+  margin: 0;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agreement-estimate-panel {
+  margin-top: 18px;
+}
+
+.agreement-estimate-panel form {
+  max-width: 480px;
+  margin-top: 15px;
+}
+
+.currency-input {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #dfe3ef;
+  border-radius: 9px;
+  background: #fbfcff;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.currency-input span {
+  padding-left: 13px;
+}
+
+.currency-input input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.currency-input input:focus {
+  box-shadow: none;
+}
+
+.currency-input:focus-within {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px #167c721c;
+}
+
+.agreement-estimate-panel form button {
+  align-self: flex-start;
+  margin-top: 18px;
+}
+
 /* AUTHENTICATION */
 
 body {
